@@ -4,7 +4,7 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
-from utils.losses import contrastive_loss
+from utils.losses import multi_positive_contrastive_loss
 from utils.metrics import recall_at_k
 
 
@@ -15,6 +15,7 @@ class Trainer:
         self.val_loader = val_loader
         self.config = config
         self.device = device
+        self.K = config.captions_per_image
 
         # Pretrained backbones use a lower LR to preserve learned features
         backbone_lr = config.learning_rate * 0.1
@@ -49,7 +50,6 @@ class Trainer:
         self.best_val_loss = float("inf")
         self._early_stop_counter = 0
 
-        # Freeze backbones for the first N epochs to stabilise projection heads first
         if config.freeze_backbone_epochs > 0:
             self._set_backbone_grad(requires_grad=False)
             print(f"Backbones frozen for first {config.freeze_backbone_epochs} epoch(s).", flush=True)
@@ -61,12 +61,26 @@ class Trainer:
             p.requires_grad = requires_grad
 
     def _forward_batch(self, batch):
-        images = batch["image"].to(self.device)
-        input_ids = batch["input_ids"].to(self.device)
-        attention_mask = batch["attention_mask"].to(self.device)
-        image_ids = batch["image_id"].to(self.device)
-        image_emb, text_emb, temp = self.model(images, input_ids, attention_mask)
-        return image_emb, text_emb, temp, image_ids
+        """Encode a batch of B images + B*K captions.
+
+        Returns
+        -------
+        image_emb:  (B, D)
+        text_emb:   (B*K, D)   ordered [img0_cap0..K-1, img1_cap0..K-1, ...]
+        scale:      scalar
+        image_ids:  (B,)
+        """
+        images = batch["image"].to(self.device, non_blocking=True)             # (B, 3, H, W)
+        input_ids = batch["input_ids"].to(self.device, non_blocking=True)      # (B, K, L)
+        attention_mask = batch["attention_mask"].to(self.device, non_blocking=True)
+        image_ids = batch["image_id"].to(self.device, non_blocking=True)       # (B,)
+
+        B, K, L = input_ids.shape
+        flat_ids = input_ids.reshape(B * K, L)
+        flat_mask = attention_mask.reshape(B * K, L)
+
+        image_emb, text_emb, scale = self.model(images, flat_ids, flat_mask)
+        return image_emb, text_emb, scale, image_ids
 
     def train_epoch(self, epoch: int) -> float:
         self.model.train()
@@ -74,8 +88,8 @@ class Trainer:
 
         for step, batch in enumerate(self.train_loader, 1):
             self.optimizer.zero_grad()
-            image_emb, text_emb, temp, image_ids = self._forward_batch(batch)
-            loss = contrastive_loss(image_emb, text_emb, temp, image_ids)
+            image_emb, text_emb, scale, _ = self._forward_batch(batch)
+            loss = multi_positive_contrastive_loss(image_emb, text_emb, scale, self.K)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.clip_grad_norm
@@ -93,20 +107,26 @@ class Trainer:
     def evaluate(self):
         self.model.eval()
         total_loss = 0.0
-        all_image_emb, all_text_emb = [], []
+        all_image_emb, all_text_emb, all_image_ids = [], [], []
 
-        all_image_ids = []
         for batch in self.val_loader:
-            image_emb, text_emb, temp, image_ids = self._forward_batch(batch)
-            total_loss += contrastive_loss(image_emb, text_emb, temp, image_ids).item()
+            image_emb, text_emb, scale, image_ids = self._forward_batch(batch)
+            total_loss += multi_positive_contrastive_loss(
+                image_emb, text_emb, scale, self.K
+            ).item()
             all_image_emb.append(image_emb.cpu())
             all_text_emb.append(text_emb.cpu())
             all_image_ids.append(image_ids.cpu())
 
-        image_emb = torch.cat(all_image_emb)
-        text_emb = torch.cat(all_text_emb)
-        image_ids = torch.cat(all_image_ids)
-        metrics = recall_at_k(image_emb, text_emb, image_ids)
+        image_emb = torch.cat(all_image_emb)                          # (M, D)
+        text_emb = torch.cat(all_text_emb)                            # (M*K, D)
+        image_ids = torch.cat(all_image_ids)                          # (M,)
+
+        # recall_at_k expects per-caption parallel arrays — expand image side.
+        image_emb_per_caption = image_emb.repeat_interleave(self.K, dim=0)
+        text_image_ids = image_ids.repeat_interleave(self.K)
+        metrics = recall_at_k(image_emb_per_caption, text_emb, text_image_ids)
+
         return total_loss / len(self.val_loader), metrics
 
     def save_checkpoint(self, epoch: int, val_loss: float) -> bool:
@@ -131,7 +151,6 @@ class Trainer:
     def train(self):
         for epoch in range(1, self.config.num_epochs + 1):
 
-            # Unfreeze backbone after warmup period
             if epoch == self.config.freeze_backbone_epochs + 1:
                 self._set_backbone_grad(requires_grad=True)
                 print("Backbones unfrozen.", flush=True)
@@ -150,7 +169,6 @@ class Trainer:
 
             improved = self.save_checkpoint(epoch, val_loss)
 
-            # Early stopping
             if improved:
                 self._early_stop_counter = 0
             else:

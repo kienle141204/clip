@@ -16,12 +16,15 @@ class ClipConfig:
     embed_dim: int = 512
     max_seq_len: int = 77
     image_size: int = 224
+    captions_per_image: int = 5      # K positives per image for multi-positive InfoNCE
 
     # Model regularization
     dropout: float = 0.1
 
     # Training
-    batch_size: int = 64
+    # NB: each batch step processes batch_size images × captions_per_image captions,
+    # so text-side memory scales with K. Lower batch_size if OOM.
+    batch_size: int = 32
     num_epochs: int = 30
     learning_rate: float = 1e-4
     weight_decay: float = 1e-3

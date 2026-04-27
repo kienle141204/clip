@@ -5,10 +5,19 @@ from collections import defaultdict
 
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
-from transformers import DistilBertTokenizer
 
 
 class Flickr8kDataset(Dataset):
+    """Image-indexed dataset: each entry is one image with K captions.
+
+    Returns
+    -------
+    image:           (3, H, W)
+    input_ids:       (K, L) — K captions of the same image, tokenised
+    attention_mask:  (K, L)
+    image_id:        int
+    """
+
     def __init__(
         self,
         images_dir: str,
@@ -17,6 +26,7 @@ class Flickr8kDataset(Dataset):
         tokenizer=None,
         transform=None,
         max_seq_len: int = 77,
+        captions_per_image: int = 5,
         train_ratio: float = 0.8,
         val_ratio: float = 0.1,
         seed: int = 42,
@@ -25,12 +35,12 @@ class Flickr8kDataset(Dataset):
         self.tokenizer = tokenizer
         self.transform = transform
         self.max_seq_len = max_seq_len
+        self.captions_per_image = captions_per_image
 
         pairs = self._parse_captions(captions_file)
         self.data = self._split(pairs, split, train_ratio, val_ratio, seed)
 
     def _parse_captions(self, captions_file: str):
-        """Parse captions.txt (CSV: image,caption) -> list of (image_name, caption)."""
         pairs = []
         with open(captions_file, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
@@ -39,7 +49,6 @@ class Flickr8kDataset(Dataset):
         return pairs
 
     def _split(self, pairs, split, train_ratio, val_ratio, seed):
-        # Group by image to avoid same image appearing in multiple splits
         image_to_captions = defaultdict(list)
         for image_name, caption in pairs:
             image_to_captions[image_name].append(caption)
@@ -61,10 +70,17 @@ class Flickr8kDataset(Dataset):
         else:
             selected = images[n_train + n_val :]
 
+        K = self.captions_per_image
         data = []
         for img in selected:
-            for cap in image_to_captions[img]:
-                data.append({"image": img, "caption": cap, "image_id": image_to_id[img]})
+            caps = image_to_captions[img]
+            if len(caps) >= K:
+                caps = caps[:K]
+            else:
+                # Pad by repeating the last caption — Flickr8k always has 5,
+                # but stay defensive against malformed rows.
+                caps = caps + [caps[-1]] * (K - len(caps))
+            data.append({"image": img, "captions": caps, "image_id": image_to_id[img]})
         return data
 
     def __len__(self):
@@ -79,7 +95,7 @@ class Flickr8kDataset(Dataset):
             image = self.transform(image)
 
         encoding = self.tokenizer(
-            item["caption"],
+            item["captions"],
             max_length=self.max_seq_len,
             padding="max_length",
             truncation=True,
@@ -88,9 +104,8 @@ class Flickr8kDataset(Dataset):
 
         return {
             "image": image,
-            "input_ids": encoding["input_ids"].squeeze(0),
-            "attention_mask": encoding["attention_mask"].squeeze(0),
-            "caption": item["caption"],
+            "input_ids": encoding["input_ids"],          # (K, L)
+            "attention_mask": encoding["attention_mask"], # (K, L)
             "image_id": item["image_id"],
         }
 
@@ -101,6 +116,7 @@ def build_loaders(config, tokenizer, train_transform, val_transform):
         captions_file=config.captions_file,
         tokenizer=tokenizer,
         max_seq_len=config.max_seq_len,
+        captions_per_image=config.captions_per_image,
         train_ratio=config.train_ratio,
         val_ratio=config.val_ratio,
         seed=config.seed,

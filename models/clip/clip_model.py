@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from .image_encoder import ImageEncoder
 from .text_encoder import TextEncoder
 
-# Prevent logit scale from growing unboundedly (equivalent to temperature < 0.01)
+# Prevent logit scale from growing unboundedly (caps temperature at >= 1/100 = 0.01).
+# This is the OpenAI CLIP convention: clamp the parameter, then exponentiate.
 _MAX_LOGIT_SCALE = math.log(100.0)
 
 
@@ -29,5 +30,5 @@ class CLIPModel(nn.Module):
     def forward(self, images, input_ids, attention_mask):
         image_emb = self.encode_image(images)
         text_emb = self.encode_text(input_ids, attention_mask)
-        scale = self.logit_scale.exp().clamp(max=_MAX_LOGIT_SCALE)
+        scale = self.logit_scale.clamp(max=_MAX_LOGIT_SCALE).exp()
         return image_emb, text_emb, scale
