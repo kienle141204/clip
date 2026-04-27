@@ -26,14 +26,12 @@ class Trainer:
         os.makedirs(config.checkpoint_dir, exist_ok=True)
         self.best_val_loss = float("inf")
 
-    # ------------------------------------------------------------------
     def _forward_batch(self, batch):
         images = batch["image"].to(self.device)
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
         return self.model(images, input_ids, attention_mask)
 
-    # ------------------------------------------------------------------
     def train_epoch(self, epoch: int) -> float:
         self.model.train()
         total_loss = 0.0
@@ -55,7 +53,6 @@ class Trainer:
 
         return total_loss / len(self.train_loader)
 
-    # ------------------------------------------------------------------
     @torch.no_grad()
     def evaluate(self):
         self.model.eval()
@@ -73,7 +70,6 @@ class Trainer:
         metrics = recall_at_k(image_emb, text_emb)
         return total_loss / len(self.val_loader), metrics
 
-    # ------------------------------------------------------------------
     def save_checkpoint(self, epoch: int, val_loss: float):
         state = {
             "epoch": epoch,
@@ -90,7 +86,6 @@ class Trainer:
             torch.save(self.model.state_dict(), best_path)
             print(f"  --> Best model saved (val_loss={val_loss:.4f})")
 
-    # ------------------------------------------------------------------
     def train(self):
         for epoch in range(1, self.config.num_epochs + 1):
             train_loss = self.train_epoch(epoch)

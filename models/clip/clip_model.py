@@ -11,7 +11,6 @@ class CLIPModel(nn.Module):
         super().__init__()
         self.image_encoder = ImageEncoder(config.image_encoder, config.embed_dim)
         self.text_encoder = TextEncoder(config.text_encoder, config.embed_dim)
-        # Learnable temperature (log scale for numerical stability)
         self.log_temperature = nn.Parameter(torch.log(torch.tensor(config.temperature)))
 
     @property

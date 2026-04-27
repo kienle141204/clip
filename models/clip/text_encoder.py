@@ -1,5 +1,5 @@
 import torch.nn as nn
-from transformers import DistilBertModel, DistilBertConfig
+from transformers import DistilBertModel
 
 
 class TextEncoder(nn.Module):
@@ -16,6 +16,5 @@ class TextEncoder(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
-        # CLS token as sentence representation
         cls = outputs.last_hidden_state[:, 0, :]
         return self.projection(cls)

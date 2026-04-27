@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Config:
+class ClipConfig:
     # Data paths
     images_dir: str = "data/Flickr8k_Dataset/images"
     captions_file: str = "data/Flickr8k_Dataset/captions.txt"
@@ -27,5 +27,5 @@ class Config:
     num_workers: int = 4
 
     # Paths
-    checkpoint_dir: str = "checkpoints"
+    checkpoint_dir: str = "checkpoints/clip"
     log_interval: int = 50
