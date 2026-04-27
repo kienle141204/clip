@@ -50,7 +50,9 @@ class Trainer:
         images = batch["image"].to(self.device)
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
-        return self.model(images, input_ids, attention_mask)
+        image_ids = batch["image_id"].to(self.device)
+        image_emb, text_emb, temp = self.model(images, input_ids, attention_mask)
+        return image_emb, text_emb, temp, image_ids
 
     def train_epoch(self, epoch: int) -> float:
         self.model.train()
@@ -58,8 +60,8 @@ class Trainer:
 
         for step, batch in enumerate(self.train_loader, 1):
             self.optimizer.zero_grad()
-            image_emb, text_emb, temp = self._forward_batch(batch)
-            loss = contrastive_loss(image_emb, text_emb, temp)
+            image_emb, text_emb, temp, image_ids = self._forward_batch(batch)
+            loss = contrastive_loss(image_emb, text_emb, temp, image_ids)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.clip_grad_norm
@@ -79,15 +81,18 @@ class Trainer:
         total_loss = 0.0
         all_image_emb, all_text_emb = [], []
 
+        all_image_ids = []
         for batch in self.val_loader:
-            image_emb, text_emb, temp = self._forward_batch(batch)
-            total_loss += contrastive_loss(image_emb, text_emb, temp).item()
+            image_emb, text_emb, temp, image_ids = self._forward_batch(batch)
+            total_loss += contrastive_loss(image_emb, text_emb, temp, image_ids).item()
             all_image_emb.append(image_emb.cpu())
             all_text_emb.append(text_emb.cpu())
+            all_image_ids.append(image_ids.cpu())
 
         image_emb = torch.cat(all_image_emb)
         text_emb = torch.cat(all_text_emb)
-        metrics = recall_at_k(image_emb, text_emb)
+        image_ids = torch.cat(all_image_ids)
+        metrics = recall_at_k(image_emb, text_emb, image_ids)
         return total_loss / len(self.val_loader), metrics
 
     def save_checkpoint(self, epoch: int, val_loss: float) -> bool:

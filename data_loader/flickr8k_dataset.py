@@ -45,6 +45,8 @@ class Flickr8kDataset(Dataset):
             image_to_captions[image_name].append(caption)
 
         images = sorted(image_to_captions.keys())
+        image_to_id = {img: idx for idx, img in enumerate(images)}
+
         rng = random.Random(seed)
         rng.shuffle(images)
 
@@ -62,7 +64,7 @@ class Flickr8kDataset(Dataset):
         data = []
         for img in selected:
             for cap in image_to_captions[img]:
-                data.append({"image": img, "caption": cap})
+                data.append({"image": img, "caption": cap, "image_id": image_to_id[img]})
         return data
 
     def __len__(self):
@@ -89,6 +91,7 @@ class Flickr8kDataset(Dataset):
             "input_ids": encoding["input_ids"].squeeze(0),
             "attention_mask": encoding["attention_mask"].squeeze(0),
             "caption": item["caption"],
+            "image_id": item["image_id"],
         }
 
 
