@@ -2,7 +2,7 @@ import os
 
 import torch
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from utils.losses import contrastive_loss
 from utils.metrics import recall_at_k
@@ -29,7 +29,21 @@ class Trainer:
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
-        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=config.num_epochs)
+        warmup = LinearLR(
+            self.optimizer,
+            start_factor=0.01,
+            end_factor=1.0,
+            total_iters=config.warmup_epochs,
+        )
+        cosine = CosineAnnealingLR(
+            self.optimizer,
+            T_max=max(1, config.num_epochs - config.warmup_epochs),
+        )
+        self.scheduler = SequentialLR(
+            self.optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[config.warmup_epochs],
+        )
 
         os.makedirs(config.checkpoint_dir, exist_ok=True)
         self.best_val_loss = float("inf")

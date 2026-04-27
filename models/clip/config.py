@@ -13,7 +13,7 @@ class ClipConfig:
     # Model
     image_encoder: str = "resnet50"
     text_encoder: str = "distilbert-base-uncased"
-    embed_dim: int = 256
+    embed_dim: int = 512
     max_seq_len: int = 77
     image_size: int = 224
 
@@ -28,8 +28,9 @@ class ClipConfig:
     temperature: float = 0.07
     clip_grad_norm: float = 1.0
     num_workers: int = 4
+    warmup_epochs: int = 3            # linear LR warmup for first N epochs
     freeze_backbone_epochs: int = 3   # freeze backbone for first N epochs
-    early_stopping_patience: int = 5  # stop if val_loss doesn't improve for N epochs
+    early_stopping_patience: int = 8  # stop if val_loss doesn't improve for N epochs
 
     # Paths
     checkpoint_dir: str = "checkpoints/clip"
