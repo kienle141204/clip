@@ -17,14 +17,19 @@ class ClipConfig:
     max_seq_len: int = 77
     image_size: int = 224
 
+    # Model regularization
+    dropout: float = 0.1
+
     # Training
     batch_size: int = 64
     num_epochs: int = 30
     learning_rate: float = 1e-4
-    weight_decay: float = 1e-4
+    weight_decay: float = 1e-3
     temperature: float = 0.07
     clip_grad_norm: float = 1.0
     num_workers: int = 4
+    freeze_backbone_epochs: int = 3   # freeze backbone for first N epochs
+    early_stopping_patience: int = 5  # stop if val_loss doesn't improve for N epochs
 
     # Paths
     checkpoint_dir: str = "checkpoints/clip"

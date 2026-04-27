@@ -9,7 +9,7 @@ _BACKBONES = {
 
 
 class ImageEncoder(nn.Module):
-    def __init__(self, model_name: str = "resnet50", embed_dim: int = 256):
+    def __init__(self, model_name: str = "resnet50", embed_dim: int = 256, dropout: float = 0.1):
         super().__init__()
         if model_name not in _BACKBONES:
             raise ValueError(f"Unsupported image encoder: {model_name}")
@@ -22,6 +22,7 @@ class ImageEncoder(nn.Module):
         self.projection = nn.Sequential(
             nn.Linear(feat_dim, embed_dim),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(embed_dim, embed_dim),
         )
 

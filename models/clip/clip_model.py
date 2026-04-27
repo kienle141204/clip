@@ -14,8 +14,8 @@ _MAX_LOGIT_SCALE = math.log(100.0)
 class CLIPModel(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.image_encoder = ImageEncoder(config.image_encoder, config.embed_dim)
-        self.text_encoder = TextEncoder(config.text_encoder, config.embed_dim)
+        self.image_encoder = ImageEncoder(config.image_encoder, config.embed_dim, config.dropout)
+        self.text_encoder = TextEncoder(config.text_encoder, config.embed_dim, config.dropout)
         # logit_scale = log(1/temperature) so that similarity * exp(logit_scale)
         # gives sharp distributions. Initialised to log(1/0.07) ≈ 2.66.
         self.logit_scale = nn.Parameter(torch.tensor(math.log(1.0 / config.temperature)))

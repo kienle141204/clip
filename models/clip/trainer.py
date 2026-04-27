@@ -33,6 +33,18 @@ class Trainer:
 
         os.makedirs(config.checkpoint_dir, exist_ok=True)
         self.best_val_loss = float("inf")
+        self._early_stop_counter = 0
+
+        # Freeze backbones for the first N epochs to stabilise projection heads first
+        if config.freeze_backbone_epochs > 0:
+            self._set_backbone_grad(requires_grad=False)
+            print(f"Backbones frozen for first {config.freeze_backbone_epochs} epoch(s).", flush=True)
+
+    def _set_backbone_grad(self, requires_grad: bool):
+        for p in self.model.image_encoder.backbone.parameters():
+            p.requires_grad = requires_grad
+        for p in self.model.text_encoder.encoder.parameters():
+            p.requires_grad = requires_grad
 
     def _forward_batch(self, batch):
         images = batch["image"].to(self.device)
@@ -78,7 +90,8 @@ class Trainer:
         metrics = recall_at_k(image_emb, text_emb)
         return total_loss / len(self.val_loader), metrics
 
-    def save_checkpoint(self, epoch: int, val_loss: float):
+    def save_checkpoint(self, epoch: int, val_loss: float) -> bool:
+        """Save checkpoint. Returns True if this is the new best model."""
         state = {
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
@@ -93,9 +106,17 @@ class Trainer:
             best_path = os.path.join(self.config.checkpoint_dir, "best_model.pt")
             torch.save(self.model.state_dict(), best_path)
             print(f"  --> Best model saved (val_loss={val_loss:.4f})", flush=True)
+            return True
+        return False
 
     def train(self):
         for epoch in range(1, self.config.num_epochs + 1):
+
+            # Unfreeze backbone after warmup period
+            if epoch == self.config.freeze_backbone_epochs + 1:
+                self._set_backbone_grad(requires_grad=True)
+                print("Backbones unfrozen.", flush=True)
+
             train_loss = self.train_epoch(epoch)
             val_loss, metrics = self.evaluate()
             self.scheduler.step()
@@ -108,4 +129,18 @@ class Trainer:
             for k, v in metrics.items():
                 print(f"  {k}: {v:.4f}", flush=True)
 
-            self.save_checkpoint(epoch, val_loss)
+            improved = self.save_checkpoint(epoch, val_loss)
+
+            # Early stopping
+            if improved:
+                self._early_stop_counter = 0
+            else:
+                self._early_stop_counter += 1
+                print(
+                    f"  [early stopping] no improvement for {self._early_stop_counter}"
+                    f"/{self.config.early_stopping_patience} epoch(s).",
+                    flush=True,
+                )
+                if self._early_stop_counter >= self.config.early_stopping_patience:
+                    print(f"Early stopping at epoch {epoch}.", flush=True)
+                    break

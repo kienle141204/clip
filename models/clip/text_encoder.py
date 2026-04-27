@@ -3,7 +3,7 @@ from transformers import DistilBertModel
 
 
 class TextEncoder(nn.Module):
-    def __init__(self, model_name: str = "distilbert-base-uncased", embed_dim: int = 256):
+    def __init__(self, model_name: str = "distilbert-base-uncased", embed_dim: int = 256, dropout: float = 0.1):
         super().__init__()
         self.encoder = DistilBertModel.from_pretrained(model_name)
         hidden_size = self.encoder.config.hidden_size
@@ -11,6 +11,7 @@ class TextEncoder(nn.Module):
         self.projection = nn.Sequential(
             nn.Linear(hidden_size, embed_dim),
             nn.GELU(),
+            nn.Dropout(dropout),
             nn.Linear(embed_dim, embed_dim),
         )
 
