@@ -16,8 +16,16 @@ class Trainer:
         self.config = config
         self.device = device
 
+        # Pretrained backbones use a lower LR to preserve learned features
+        backbone_lr = config.learning_rate * 0.1
         self.optimizer = AdamW(
-            model.parameters(),
+            [
+                {"params": model.image_encoder.backbone.parameters(), "lr": backbone_lr},
+                {"params": model.image_encoder.projection.parameters()},
+                {"params": model.text_encoder.encoder.parameters(), "lr": backbone_lr},
+                {"params": model.text_encoder.projection.parameters()},
+                {"params": [model.logit_scale]},
+            ],
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
@@ -49,7 +57,7 @@ class Trainer:
 
             if step % self.config.log_interval == 0:
                 avg = total_loss / step
-                print(f"  [epoch {epoch} step {step}/{len(self.train_loader)}] loss={avg:.4f}")
+                print(f"  [epoch {epoch} step {step}/{len(self.train_loader)}] loss={avg:.4f}", flush=True)
 
         return total_loss / len(self.train_loader)
 
@@ -84,7 +92,7 @@ class Trainer:
             self.best_val_loss = val_loss
             best_path = os.path.join(self.config.checkpoint_dir, "best_model.pt")
             torch.save(self.model.state_dict(), best_path)
-            print(f"  --> Best model saved (val_loss={val_loss:.4f})")
+            print(f"  --> Best model saved (val_loss={val_loss:.4f})", flush=True)
 
     def train(self):
         for epoch in range(1, self.config.num_epochs + 1):
@@ -94,9 +102,10 @@ class Trainer:
 
             print(
                 f"Epoch {epoch:3d}/{self.config.num_epochs} | "
-                f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f}"
+                f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f}",
+                flush=True,
             )
             for k, v in metrics.items():
-                print(f"  {k}: {v:.4f}")
+                print(f"  {k}: {v:.4f}", flush=True)
 
             self.save_checkpoint(epoch, val_loss)

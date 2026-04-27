@@ -38,8 +38,8 @@ def run(argv=None):
     config = _apply_args(ClipConfig(), args)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
-    print(f"Config : {config}")
+    print(f"Device : {device}", flush=True)
+    print(f"Config : {config}", flush=True)
 
     tokenizer = DistilBertTokenizer.from_pretrained(config.text_encoder)
 
@@ -51,18 +51,19 @@ def run(argv=None):
     )
     print(
         f"Splits — train: {len(train_loader.dataset)} | "
-        f"val: {len(val_loader.dataset)} | test: {len(test_loader.dataset)}"
+        f"val: {len(val_loader.dataset)} | test: {len(test_loader.dataset)}",
+        flush=True,
     )
 
     model = CLIPModel(config)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Trainable params: {n_params:,}")
+    print(f"Trainable params: {n_params:,}", flush=True)
 
     trainer = Trainer(model, train_loader, val_loader, config, device)
     trainer.train()
 
-    print("\n--- Test set evaluation ---")
+    print("\n--- Test set evaluation ---", flush=True)
     trainer.val_loader = test_loader
     _, test_metrics = trainer.evaluate()
     for k, v in test_metrics.items():
-        print(f"  {k}: {v:.4f}")
+        print(f"  {k}: {v:.4f}", flush=True)
